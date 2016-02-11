@@ -1,23 +1,27 @@
 #! /usr/bin/python
 #
-#
 # \Author  Hans Kramer
 #
 # \Date    Jan 2016
 #
 
-
 import os
 import types
 
+from singleton   import Singleton
+from collections import defaultdict
 
+
+@Singleton
 class USBus(object):
 
     DEV_PATH = "/sys/bus/usb/devices/"
 
     def __init__(self):
         self._device_paths = [x for x in self._get_devices_paths()]
-        self._id2device    = {k:v for k,v in self._get_devices_ids()}
+        self._id2device    = defaultdict(list)
+        for k,v in self._get_devices_ids():
+            self._id2device[k].append(v)
 
     def _get_devices_paths(self):
         for device in os.listdir(self.DEV_PATH):
@@ -34,13 +38,24 @@ class USBus(object):
             except OSError:
                 pass
 
-    def get_device(self, id, refresh=False):
+    def _init(self, id, refresh):
         if refresh:
             self.__init__()
         if isinstance(id, types.StringTypes):
             id = tuple([int(x, 16) for x in id.split(":")])
+        return id
+
+    def get_all_devices(self, id, refresh=False):
+        id = self._init(id, refresh)
         try:
-            return USBDevice(self._id2device[id])
+            return [USBDevice(path) for path in self._id2device[id]]
+        except KeyError:
+            return USBDevice(None)
+        
+    def get_device(self, id, refresh=False):
+        id = self._init(id, refresh)
+        try:
+            return USBDevice(self._id2device[id][0])
         except KeyError:
             return USBDevice(None)
 
@@ -49,7 +64,7 @@ class USBus(object):
             yield k
 
 
-
+@Singleton
 class USBDevice(object):
 
     def __init__(self, usb_path):
@@ -62,6 +77,9 @@ class USBDevice(object):
             return open(os.path.join(self._path, item)).readline().strip(' \n')
         except (OSError, IOError) as e:
             return None
+
+    def get_speed(self):
+        return self._read_line("speed")
 
     def get_version(self):
         return self._read_line("version")
